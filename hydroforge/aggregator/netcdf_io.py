@@ -359,6 +359,7 @@ class NetCDFIOMixin:
         # Each buffer key mirrors a submit key (out_name or out_name_kN).
         # Value: dict(data=[], dt=[], path=Path)
         self._write_buffers: Dict[str, Dict[str, Any]] = {}
+        self._write_executor_mapping: Dict[str, int] = {}
         # Compute the adaptive batch size from the first registered output
         first_meta = next(iter(self._metadata.values()), {})
         actual_shape = first_meta.get('actual_shape', (1,))
@@ -400,12 +401,21 @@ class NetCDFIOMixin:
             writer(args)
         else:
             try:
-                idx = abs(hash(key)) % len(self._write_executors)
+                idx = self._write_executor_mapping.get(key)
+                if idx is None:
+                    # Find least busy writer
+                    key_count = [0] * len(self._write_executors)
+                    for v in self._write_executor_mapping.values():
+                        key_count[v] += 1
+                    idx = self._write_executor_mapping[key] = key_count.index(min(key_count))
+
                 future = self._write_executors[idx].submit(writer, args)
                 self._write_futures.append(future)
             except (RuntimeError, ValueError):
                 # Executor already shut down - write synchronously.
                 writer(args)
+                # Delete the mapping to avoid future attempts to use the executor
+                self._write_executor_mapping.pop(key, None)
 
         buf['data'].clear()
         buf['dt'].clear()
