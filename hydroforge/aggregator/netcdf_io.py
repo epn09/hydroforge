@@ -125,17 +125,8 @@ def _write_batch_netcdf_process(args: Tuple[Any, ...]) -> Tuple[str, int]:
         time_unit = time_var.getncattr("units")
         calendar = time_var.getncattr("calendar")
 
-        for i in range(n_steps):
-            row = data_batch[i]
-            t = current_len + i
-            if row.ndim == 1:
-                nc_var[t, :] = row
-            elif row.ndim == 2:
-                nc_var[t, :, :] = row
-            elif row.ndim == 3:
-                nc_var[t, :, :, :] = row
-
-            time_var[t] = nc.date2num(dt_list[i], units=time_unit, calendar=calendar)
+        nc_var[current_len:current_len + n_steps] = data_batch
+        time_var[current_len:current_len + n_steps] = nc.date2num(dt_list, units=time_unit, calendar=calendar)
 
     _wsl_drop_cache(output_path)
     return (var_name, current_len + n_steps - 1)
